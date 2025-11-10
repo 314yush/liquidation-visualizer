@@ -10,22 +10,15 @@ function App() {
   const [position, setPosition] = useState<Position | null>(null);
   const [result, setResult] = useState<LiquidationResult | null>(null);
   const [pairInfoData, setPairInfoData] = useState<PairInfoResponse | null>(null);
-  const [loadingPairInfo, setLoadingPairInfo] = useState(true);
-  const [pairInfoError, setPairInfoError] = useState<string | null>(null);
 
   // Fetch pair info on mount
   useEffect(() => {
     async function loadPairInfo() {
       try {
-        setLoadingPairInfo(true);
-        setPairInfoError(null);
         const data = await fetchPairInfo();
         setPairInfoData(data);
       } catch (error) {
         console.error('Failed to load pair info:', error);
-        setPairInfoError('Failed to load market data. Calculations will proceed without dynamic spread.');
-      } finally {
-        setLoadingPairInfo(false);
       }
     }
     
@@ -67,8 +60,6 @@ function App() {
           <PositionForm 
             onSubmit={handlePositionSubmit} 
             initialPosition={position || undefined}
-            isLoading={loadingPairInfo}
-            pairInfoData={pairInfoData}
           />
           
           {position && result && (

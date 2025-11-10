@@ -9,7 +9,7 @@ interface LeverageChartProps {
 
 export const LeverageChart: React.FC<LeverageChartProps> = ({ position, onLeverageChange }) => {
   const [hoveredLeverage, setHoveredLeverage] = useState<number | null>(null);
-  const { entryPrice, side, collateral, currentPrice } = position;
+  const { side, currentPrice } = position;
   const currentLeverage = position.leverage;
 
   // Generate data points for leverage from 1x to 500x

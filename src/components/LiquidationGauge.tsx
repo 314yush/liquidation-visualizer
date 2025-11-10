@@ -13,16 +13,12 @@ export const LiquidationGauge: React.FC<LiquidationGaugeProps> = ({ result }) =>
   
   // Color based on risk level
   let gaugeColor: string;
-  let gaugeGradient: string;
   if (result.isCritical) {
     gaugeColor = '#ef4444'; // Red
-    gaugeGradient = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
   } else if (result.isAtRisk) {
     gaugeColor = '#f59e0b'; // Orange
-    gaugeGradient = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
   } else {
     gaugeColor = '#10b981'; // Green
-    gaugeGradient = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
   }
   
   // Calculate angle for gauge (0-180 degrees)

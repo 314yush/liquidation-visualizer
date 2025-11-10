@@ -1,15 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Position } from '../utils/liquidationCalculator';
 import { fetchBinancePrice } from '../utils/binanceApi';
-import { calculateDynamicSpread, type SpreadParams } from '../utils/spreadCalculator';
-import { getPairIndexFromMarket } from '../utils/pairInfoApi';
-import type { PairInfoResponse } from '../types/pairInfo';
 
 interface PositionFormProps {
   onSubmit: (position: Position) => void;
   initialPosition?: Partial<Position>;
-  isLoading?: boolean;
-  pairInfoData?: PairInfoResponse | null;
 }
 
 const MARKETS = [
@@ -18,7 +13,7 @@ const MARKETS = [
   'SOL/USD',
 ];
 
-export const PositionForm: React.FC<PositionFormProps> = ({ onSubmit, initialPosition, isLoading = false, pairInfoData }) => {
+export const PositionForm: React.FC<PositionFormProps> = ({ onSubmit, initialPosition }) => {
   const [market, setMarket] = useState(initialPosition?.market || MARKETS[0]);
   const [side, setSide] = useState<'long' | 'short'>(initialPosition?.side || 'long');
   const [collateral, setCollateral] = useState(initialPosition?.collateral?.toString() || '1000');
@@ -47,66 +42,6 @@ export const PositionForm: React.FC<PositionFormProps> = ({ onSubmit, initialPos
   const [priceLoading, setPriceLoading] = useState(false);
   const [priceError, setPriceError] = useState<string | null>(null);
   const autoRefreshIntervalRef = useRef<number | null>(null);
-
-  // Calculate dynamic spread in real-time
-  const spreadResult = useMemo(() => {
-    // Debug logging
-    console.log('Spread calculation check:', {
-      hasPairInfoData: !!pairInfoData,
-      binancePrice,
-      collateral,
-      market,
-    });
-
-    if (!pairInfoData) {
-      console.log('No pairInfoData available');
-      return null;
-    }
-
-    if (!binancePrice || !collateral || parseFloat(collateral) <= 0) {
-      console.log('Missing price or collateral');
-      return null;
-    }
-
-    const pairIndex = getPairIndexFromMarket(market);
-    const pairInfo = pairInfoData[pairIndex];
-    
-    console.log('Pair lookup:', {
-      market,
-      pairIndex,
-      hasPairInfo: !!pairInfo,
-    });
-    
-    if (!pairInfo) {
-      console.log('No pair info found for index', pairIndex);
-      return null;
-    }
-
-    try {
-      const spreadParams: SpreadParams = {
-        market,
-        leverage,
-        positionSize: parseFloat(collateral) * leverage,
-        currentPrice: binancePrice,
-        isLong: side === 'long',
-        pairInfo,
-        pairIndex,
-      };
-
-      const result = calculateDynamicSpread(spreadParams);
-      
-      console.log('Spread calculated:', result);
-      
-      // Add base spread for display
-      return {
-        ...result,
-        baseSpread: (pairInfo.spreadP || 0) / 100, // Convert from percentage to decimal
-      };
-    } catch (error) {
-      console.error('Error calculating spread:', error);
-      return null;
-    }
-  }, [pairInfoData, market, leverage, collateral, binancePrice, side]);
 
   // Fetch price from Binance
   const fetchPrice = useCallback(async (showLoading = false) => {
