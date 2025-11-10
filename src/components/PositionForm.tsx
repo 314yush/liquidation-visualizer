@@ -390,7 +390,7 @@ export const PositionForm: React.FC<PositionFormProps> = ({ onSubmit, initialPos
           display: flex;
           justify-content: space-between;
           font-family: 'JetBrains Mono', monospace;
-          font-size: 0.75rem;
+          font-size: 1rem;
           font-weight: 700;
           color: #000000;
         }

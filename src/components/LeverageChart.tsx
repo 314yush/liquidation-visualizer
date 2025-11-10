@@ -208,9 +208,9 @@ export const LeverageChart: React.FC<LeverageChartProps> = ({ position, onLevera
       <div className="chart-wrapper">
         <ComposedChart
           width={900}
-          height={700}
+          height={400}
           data={safeZoneChartData}
-          margin={{ top: 40, right: 40, left: 90, bottom: 60 }}
+          margin={{ top: 20, right: 30, left: 80, bottom: 40 }}
         >
           <defs>
             <linearGradient id="safeZoneGradient" x1="0" y1="0" x2="0" y2="1">
