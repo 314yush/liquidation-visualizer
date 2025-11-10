@@ -10,127 +10,138 @@ interface ResultsDisplayProps {
 }
 
 export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ position, result, onLeverageChange }) => {
-  const distanceColor = result.isCritical ? '#ef4444' : result.isAtRisk ? '#f59e0b' : '#10b981';
+  const distanceColor = result.isCritical ? '#FF4E4E' : result.isAtRisk ? '#F5C518' : '#00FFC2';
   
   return (
     <>
-      <div className="bento-card gauge-card">
+      {/* Liquidation Gauge */}
+      <div className="brutal-card gauge-card">
+        <div className="card-label">LIQUIDATION VISUALISER</div>
         <LiquidationGauge result={result} position={position} />
       </div>
 
-      <div className="bento-card stat-card liquidation-card">
-        <div className="stat-label">Liquidation Price</div>
-        <div className="stat-value danger">${result.liquidationPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-        <div className="stat-hint">Price at which position will be liquidated</div>
+      {/* Key Metric Cards */}
+      <div className="brutal-card metric-card liquidation-card">
+        <div className="card-label">LIQUIDATION PRICE</div>
+        <div className="metric-content">
+          <div className="metric-value danger">
+            ${result.liquidationPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <div className="metric-hint">Price at which position will be liquidated</div>
+        </div>
       </div>
       
-      <div className="bento-card stat-card distance-card">
-        <div className="stat-label">Distance from Liquidation</div>
-        <div className="stat-value" style={{ color: distanceColor }}>
-          {result.distanceFromLiquidation.toFixed(2)}%
+      <div className="brutal-card metric-card distance-card">
+        <div className="card-label">DISTANCE FROM LIQUIDATION</div>
+        <div className="metric-content">
+          <div className="metric-value" style={{ color: distanceColor }}>
+            {result.distanceFromLiquidation.toFixed(2)}%
+          </div>
+          <div className="metric-dollar">
+            ${Math.abs(result.distanceInPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} away
+          </div>
+          <div className="metric-hint">Current safety margin</div>
         </div>
-        <div className="stat-dollar">
-          ${Math.abs(result.distanceInPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} away
-        </div>
-        <div className="stat-hint">Current safety margin</div>
       </div>
       
       {result.spread !== undefined && (
-        <div className="bento-card stat-card spread-card">
-          <div className="stat-label">Dynamic Spread</div>
-          <div className="stat-value warning">
-            {result.spread >= 0 ? '+' : ''}{result.spread.toFixed(4)}%
+        <div className="brutal-card metric-card spread-card">
+          <div className="card-label">SPREAD IMPACT</div>
+          <div className="metric-content">
+            <div className="metric-value warning">
+              {result.spread >= 0 ? '+' : ''}{result.spread.toFixed(4)}%
+            </div>
+            <div className="metric-hint">Applied to entry price</div>
           </div>
-          <div className="stat-hint">Applied to entry price</div>
         </div>
       )}
 
-      <div className="bento-card leverage-chart-card">
+      {/* Leverage Chart */}
+      <div className="brutal-card chart-card">
+        <div className="card-label">LEVERAGE VS LIQUIDATION MAP</div>
         <LeverageChart position={position} onLeverageChange={onLeverageChange} />
       </div>
 
-
       <style>{`
-        .bento-card {
-          background: rgba(255, 255, 255, 0.03);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 1rem;
-          padding: 1.25rem;
-          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-          position: relative;
-          overflow: hidden;
-        }
-        .bento-card::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 1px;
-          background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
-        }
-        .bento-card:hover {
-          border-color: rgba(255, 255, 255, 0.15);
-        }
         .gauge-card {
           grid-column: span 6;
           grid-row: span 2;
           display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 1rem;
+          flex-direction: column;
         }
-        .stat-card {
-          grid-column: span 4;
+        .metric-card {
+          grid-column: span 3;
+          display: flex;
+          flex-direction: column;
+        }
+        .chart-card {
+          grid-column: span 12;
+        }
+        .metric-content {
+          flex: 1;
           display: flex;
           flex-direction: column;
           justify-content: space-between;
+          margin-top: 1rem;
         }
-        .liquidation-card {
-          border-left: 3px solid #ef4444;
-        }
-        .distance-card {
-          border-left: 3px solid ${distanceColor};
-        }
-        .spread-card {
-          border-left: 3px solid #f59e0b;
-        }
-        .leverage-chart-card {
-          grid-column: span 12;
-        }
-        .stat-label {
-          font-size: 0.7rem;
-          color: #9ca3af;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-          margin-bottom: 0.75rem;
-          font-weight: 600;
-        }
-        .stat-value {
+        .metric-value {
+          font-family: 'JetBrains Mono', monospace;
           font-size: 2rem;
           font-weight: 700;
-          color: #ffffff;
+          color: #000000;
           line-height: 1.1;
           margin-bottom: 0.5rem;
-          letter-spacing: -0.02em;
         }
-        .stat-value.danger {
-          color: #ef4444;
+        .metric-value.danger {
+          color: #FF4E4E;
         }
-        .stat-value.warning {
-          color: #f59e0b;
+        .metric-value.warning {
+          color: #F5C518;
         }
-        .stat-dollar {
+        .metric-dollar {
+          font-family: 'JetBrains Mono', monospace;
           font-size: 1rem;
           font-weight: 600;
-          color: #d1d5db;
-          margin-bottom: 0.375rem;
+          color: #000000;
+          margin-bottom: 0.5rem;
         }
-        .stat-hint {
+        .metric-hint {
+          font-family: 'Space Grotesk', sans-serif;
           font-size: 0.75rem;
-          color: #6b7280;
+          color: #666666;
           margin-top: auto;
+        }
+        .liquidation-card {
+          border-left: 4px solid #FF4E4E;
+        }
+        .distance-card {
+          border-left: 4px solid ${distanceColor};
+        }
+        .spread-card {
+          border-left: 4px solid #F5C518;
+        }
+        .brutal-card {
+          background: #FFFFFF;
+          border: 3px solid #000000;
+          padding: 1.5rem;
+          box-shadow: 6px 6px 0 0 #000000;
+          transition: all 0.1s;
+        }
+        .brutal-card:hover {
+          transform: translate(-2px, -2px);
+          box-shadow: 8px 8px 0 0 #000000;
+        }
+        .card-label {
+          background: #000000;
+          color: #F5C518;
+          padding: 0.5rem 1rem;
+          font-family: 'Space Grotesk', sans-serif;
+          font-size: 0.7rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
+          margin: -1.5rem -1.5rem 1rem -1.5rem;
+          border-bottom: 2px solid #F5C518;
         }
       `}</style>
     </>

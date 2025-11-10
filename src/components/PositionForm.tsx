@@ -15,6 +15,13 @@ const MARKETS = [
 
 export const PositionForm: React.FC<PositionFormProps> = ({ onSubmit, initialPosition }) => {
   const [market, setMarket] = useState(initialPosition?.market || MARKETS[0]);
+  
+  // Sync market when initialPosition changes
+  useEffect(() => {
+    if (initialPosition?.market && initialPosition.market !== market) {
+      setMarket(initialPosition.market);
+    }
+  }, [initialPosition?.market, market]);
   const [side, setSide] = useState<'long' | 'short'>(initialPosition?.side || 'long');
   const [collateral, setCollateral] = useState(initialPosition?.collateral?.toString() || '1000');
   const [leverage, setLeverage] = useState(initialPosition?.leverage || 10);
@@ -23,7 +30,6 @@ export const PositionForm: React.FC<PositionFormProps> = ({ onSubmit, initialPos
   const isInternalUpdateRef = useRef<boolean>(false);
 
   // Sync leverage when initialPosition changes from external source (e.g., chart interaction)
-  // But not when it's from our own submission or user input
   useEffect(() => {
     if (initialPosition?.leverage !== undefined && 
         initialPosition.leverage !== leverage &&
@@ -32,12 +38,12 @@ export const PositionForm: React.FC<PositionFormProps> = ({ onSubmit, initialPos
       isInternalUpdateRef.current = true;
       setLeverage(initialPosition.leverage);
       lastSubmittedLeverageRef.current = initialPosition.leverage;
-      // Reset flag after state update
       setTimeout(() => {
         isInternalUpdateRef.current = false;
       }, 0);
     }
   }, [initialPosition?.leverage, leverage]);
+
   const [binancePrice, setBinancePrice] = useState<number | null>(null);
   const [priceLoading, setPriceLoading] = useState(false);
   const [priceError, setPriceError] = useState<string | null>(null);
@@ -62,9 +68,8 @@ export const PositionForm: React.FC<PositionFormProps> = ({ onSubmit, initialPos
   useEffect(() => {
     fetchPrice(true);
     
-    // Auto-refresh price every 5 seconds
     autoRefreshIntervalRef.current = window.setInterval(() => {
-      fetchPrice(false); // Silent refresh
+      fetchPrice(false);
     }, 5000);
     
     return () => {
@@ -74,22 +79,14 @@ export const PositionForm: React.FC<PositionFormProps> = ({ onSubmit, initialPos
     };
   }, [market, fetchPrice]);
 
-  // Handle market change
-  const handleMarketChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setMarket(e.target.value);
-  };
-
   // Auto-submit when price, collateral, leverage, or side changes
-  // Use a ref to debounce rapid changes
   const submitTimeoutRef = useRef<number | null>(null);
   useEffect(() => {
     if (binancePrice !== null && collateral && parseFloat(collateral) > 0) {
-      // Clear any pending submission
       if (submitTimeoutRef.current) {
         clearTimeout(submitTimeoutRef.current);
       }
       
-      // Debounce rapid changes (especially from slider)
       submitTimeoutRef.current = window.setTimeout(() => {
         const newPosition = {
           market,
@@ -99,10 +96,9 @@ export const PositionForm: React.FC<PositionFormProps> = ({ onSubmit, initialPos
           entryPrice: binancePrice,
           currentPrice: binancePrice,
         };
-        // Update ref before submitting to prevent feedback loop
         lastSubmittedLeverageRef.current = leverage;
         onSubmit(newPosition);
-      }, 100); // Debounce for slider to reduce rapid updates
+      }, 100);
     }
     
     return () => {
@@ -112,261 +108,356 @@ export const PositionForm: React.FC<PositionFormProps> = ({ onSubmit, initialPos
     };
   }, [binancePrice, collateral, leverage, side, market, onSubmit]);
 
+  const handleMaxCollateral = () => {
+    if (binancePrice) {
+      // Set to a large round number for demo
+      setCollateral('10000');
+    }
+  };
+
+  const handleHalfCollateral = () => {
+    const current = parseFloat(collateral);
+    if (!isNaN(current)) {
+      setCollateral((current / 2).toString());
+    }
+  };
+
   return (
-    <form className="position-form" onSubmit={(e) => e.preventDefault()}>
-      <div className="bento-form-grid">
-        <div className="form-group">
-          <label htmlFor="market">Market</label>
-          <select
-            id="market"
-            value={market}
-            onChange={handleMarketChange}
-            className="form-input"
-          >
-            {MARKETS.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="side">Position Side</label>
-          <div className="side-toggle">
-            <button
-              type="button"
-              className={`toggle-btn ${side === 'long' ? 'active long' : ''}`}
-              onClick={() => setSide('long')}
-            >
-              Long
-            </button>
-            <button
-              type="button"
-              className={`toggle-btn ${side === 'short' ? 'active short' : ''}`}
-              onClick={() => setSide('short')}
-            >
-              Short
-            </button>
+    <>
+      {/* Control Panel */}
+      <div className="brutal-card control-panel">
+        <div className="card-label">CONTROL PANEL</div>
+        <div className="controls-grid">
+          <div className="control-group">
+            <label className="control-label">POSITION SIDE</label>
+            <div className="side-toggle">
+              <button
+                type="button"
+                className={`brutal-btn side-btn ${side === 'long' ? 'active long' : ''}`}
+                onClick={() => setSide('long')}
+              >
+                LONG
+              </button>
+              <button
+                type="button"
+                className={`brutal-btn side-btn ${side === 'short' ? 'active short' : ''}`}
+                onClick={() => setSide('short')}
+              >
+                SHORT
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div className="form-group">
-          <label htmlFor="collateral">Collateral (USD)</label>
-          <input
-            id="collateral"
-            type="number"
-            step="0.01"
-            min="0.01"
-            value={collateral}
-            onChange={(e) => setCollateral(e.target.value)}
-            className="form-input"
-            required
-          />
-        </div>
+          <div className="control-group">
+            <label className="control-label">COLLATERAL (USD)</label>
+            <div className="collateral-input-wrapper">
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={collateral}
+                onChange={(e) => setCollateral(e.target.value)}
+                className="brutal-input collateral-input"
+                required
+              />
+              <div className="collateral-chips">
+                <button
+                  type="button"
+                  className="brutal-chip"
+                  onClick={handleHalfCollateral}
+                >
+                  HALF
+                </button>
+                <button
+                  type="button"
+                  className="brutal-chip"
+                  onClick={handleMaxCollateral}
+                >
+                  MAX
+                </button>
+              </div>
+            </div>
+          </div>
 
-        <div className="form-group leverage-group">
-          <label htmlFor="leverage">
-            Leverage: {leverage}x
-          </label>
-          <div className="leverage-slider-container">
-            <input
-              id="leverage"
-              type="range"
-              min="1"
-              max="500"
-              step="1"
-              value={leverage}
-              onChange={(e) => {
-                isUserInputRef.current = true;
-                const newLeverage = parseInt(e.target.value, 10);
-                setLeverage(newLeverage);
-                // Reset flag after a delay to prevent sync effect from firing
-                setTimeout(() => {
-                  isUserInputRef.current = false;
-                }, 200);
-              }}
-              className="leverage-slider"
-            />
-            <div className="leverage-labels">
-              <span>1x</span>
-              <span>250x</span>
-              <span>500x</span>
+          <div className="control-group leverage-control">
+            <label className="control-label">LEVERAGE: {leverage}X</label>
+            <div className="leverage-wrapper">
+              <input
+                type="range"
+                min="1"
+                max="500"
+                step="1"
+                value={leverage}
+                onChange={(e) => {
+                  isUserInputRef.current = true;
+                  const newLeverage = parseInt(e.target.value, 10);
+                  setLeverage(newLeverage);
+                  lastSubmittedLeverageRef.current = newLeverage;
+                  setTimeout(() => {
+                    isUserInputRef.current = false;
+                  }, 200);
+                }}
+                className="brutal-slider"
+              />
+              <div className="leverage-labels">
+                <span>1X</span>
+                <span>250X</span>
+                <span>500X</span>
+              </div>
+              <input
+                type="number"
+                min="1"
+                max="500"
+                value={leverage}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (!isNaN(val) && val >= 1 && val <= 500) {
+                    setLeverage(val);
+                  }
+                }}
+                className="brutal-input leverage-input"
+              />
             </div>
           </div>
         </div>
+      </div>
 
-        <div className="form-group price-display">
-          <label>Current Price (from Binance)</label>
-          <div className="price-value">
-            {priceLoading ? (
-              <span className="price-loading">Loading...</span>
-            ) : priceError ? (
-              <span className="price-error-text">{priceError}</span>
-            ) : binancePrice !== null ? (
-              <span className="price-amount">${binancePrice.toFixed(2)}</span>
-            ) : (
-              <span className="price-loading">—</span>
-            )}
-          </div>
-          <div className="price-hint">Auto-updates every 5 seconds</div>
+      {/* Current Price */}
+      <div className="brutal-card price-card">
+        <div className="card-label">CURRENT PRICE (BINANCE)</div>
+        <div className="price-display">
+          {priceLoading ? (
+            <span className="price-loading">LOADING...</span>
+          ) : priceError ? (
+            <span className="price-error">ERROR</span>
+          ) : binancePrice !== null ? (
+            <span className="price-amount">${binancePrice.toFixed(2)}</span>
+          ) : (
+            <span className="price-loading">—</span>
+          )}
         </div>
+        <div className="price-hint">AUTO-UPDATE: 5S</div>
       </div>
 
       <style>{`
-        .position-form {
+        .control-panel {
           grid-column: span 12;
         }
-        .bento-form-grid {
+        .controls-grid {
           display: grid;
           grid-template-columns: repeat(12, 1fr);
-          gap: 1rem;
+          gap: 1.5rem;
+          margin-top: 1rem;
         }
-        .form-group {
+        .control-group {
           display: flex;
           flex-direction: column;
-          background: rgba(255, 255, 255, 0.03);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 1rem;
-          padding: 1rem;
-          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          gap: 0.75rem;
         }
-        .form-group:hover {
-          border-color: rgba(255, 255, 255, 0.15);
+        .control-group:not(.leverage-control) {
+          grid-column: span 4;
         }
-        .form-group label {
+        .leverage-control {
+          grid-column: span 12;
+        }
+        .control-label {
+          font-family: 'Space Grotesk', sans-serif;
           font-size: 0.7rem;
-          font-weight: 600;
-          color: #9ca3af;
+          font-weight: 700;
+          color: #000000;
           text-transform: uppercase;
-          letter-spacing: 0.05em;
-          margin-bottom: 0.5rem;
-        }
-        .form-input {
-          padding: 0.625rem 0.875rem;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 0.625rem;
-          font-size: 0.9375rem;
-          background: rgba(255, 255, 255, 0.05);
-          color: #ffffff;
-          transition: all 0.2s;
-        }
-        .form-input:focus {
-          outline: none;
-          border-color: rgba(99, 102, 241, 0.5);
-          background: rgba(255, 255, 255, 0.08);
-          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-        }
-        .form-input option {
-          background: #1a1f3a;
-          color: #ffffff;
+          letter-spacing: 0.1em;
         }
         .side-toggle {
           display: flex;
-          gap: 0.75rem;
+          gap: 1rem;
         }
-        .toggle-btn {
+        .brutal-btn {
           flex: 1;
-          padding: 0.625rem 0.875rem;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 0.625rem;
-          background: rgba(255, 255, 255, 0.05);
-          font-size: 0.8125rem;
-          font-weight: 600;
-          color: #9ca3af;
+          padding: 1rem;
+          border: 2px solid #000000;
+          background: #FFFFFF;
+          font-family: 'Space Grotesk', sans-serif;
+          font-size: 0.875rem;
+          font-weight: 700;
+          color: #000000;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
           cursor: pointer;
-          transition: all 0.2s;
+          box-shadow: 4px 4px 0 0 #000000;
+          transition: all 0.1s;
         }
-        .toggle-btn:hover {
-          border-color: rgba(255, 255, 255, 0.2);
-          background: rgba(255, 255, 255, 0.08);
+        .brutal-btn:hover {
+          transform: translate(-2px, -2px);
+          box-shadow: 6px 6px 0 0 #000000;
         }
-        .toggle-btn.active.long {
-          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-          border-color: #10b981;
-          color: white;
-          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        .brutal-btn:active {
+          transform: translate(2px, 2px);
+          box-shadow: 2px 2px 0 0 #000000;
         }
-        .toggle-btn.active.short {
-          background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-          border-color: #ef4444;
-          color: white;
-          box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        .side-btn.active.long {
+          background: #00FFC2;
+          border-color: #000000;
+          color: #000000;
         }
-        .leverage-group {
-          grid-column: span 6;
+        .side-btn.active.short {
+          background: #FF4E4E;
+          border-color: #000000;
+          color: #FFFFFF;
         }
-        .leverage-slider-container {
+        .collateral-input-wrapper {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+        .brutal-input {
+          padding: 0.875rem 1rem;
+          border: 2px solid #000000;
+          background: #FFFFFF;
+          color: #000000;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 1rem;
+          font-weight: 600;
+          transition: all 0.1s;
+        }
+        .brutal-input:focus {
+          outline: none;
+          background: #F5C518;
+          border-color: #000000;
+        }
+        .collateral-input {
+          font-size: 1.125rem;
+        }
+        .collateral-chips {
+          display: flex;
+          gap: 0.5rem;
+        }
+        .brutal-chip {
+          padding: 0.5rem 1rem;
+          border: 2px solid #000000;
+          background: #FFFFFF;
+          font-family: 'Space Grotesk', sans-serif;
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: #000000;
+          text-transform: uppercase;
+          cursor: pointer;
+          box-shadow: 3px 3px 0 0 #000000;
+          transition: all 0.1s;
+        }
+        .brutal-chip:hover {
+          transform: translate(-1px, -1px);
+          box-shadow: 4px 4px 0 0 #000000;
+        }
+        .brutal-chip:active {
+          transform: translate(1px, 1px);
+          box-shadow: 2px 2px 0 0 #000000;
+        }
+        .leverage-wrapper {
           display: flex;
           flex-direction: column;
           gap: 0.75rem;
         }
-        .leverage-slider {
+        .brutal-slider {
           width: 100%;
-          height: 8px;
-          border-radius: 4px;
-          background: rgba(255, 255, 255, 0.1);
+          height: 12px;
+          background: #FFFFFF;
+          border: 2px solid #000000;
           outline: none;
           -webkit-appearance: none;
           appearance: none;
+          box-shadow: 3px 3px 0 0 #000000;
         }
-        .leverage-slider::-webkit-slider-thumb {
+        .brutal-slider::-webkit-slider-thumb {
           -webkit-appearance: none;
           appearance: none;
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+          width: 24px;
+          height: 24px;
+          background: #F5C518;
+          border: 3px solid #000000;
           cursor: pointer;
-          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+          box-shadow: 4px 4px 0 0 #000000;
         }
-        .leverage-slider::-moz-range-thumb {
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        .brutal-slider::-moz-range-thumb {
+          width: 24px;
+          height: 24px;
+          background: #F5C518;
+          border: 3px solid #000000;
           cursor: pointer;
-          border: none;
-          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+          box-shadow: 4px 4px 0 0 #000000;
         }
         .leverage-labels {
           display: flex;
           justify-content: space-between;
+          font-family: 'JetBrains Mono', monospace;
           font-size: 0.75rem;
-          color: #6b7280;
+          font-weight: 700;
+          color: #000000;
+        }
+        .leverage-input {
+          width: 120px;
+          align-self: flex-end;
+        }
+        .price-card {
+          grid-column: span 4;
         }
         .price-display {
-          grid-column: span 6;
-        }
-        .price-value {
-          padding: 1rem;
-          background: rgba(99, 102, 241, 0.1);
-          border: 1px solid rgba(99, 102, 241, 0.2);
-          border-radius: 0.75rem;
+          padding: 1.25rem;
+          background: #0B0B0B;
+          border: 2px solid #000000;
           text-align: center;
+          margin-top: 1rem;
+          box-shadow: 4px 4px 0 0 #000000;
         }
         .price-amount {
-          font-size: 1.75rem;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 2rem;
           font-weight: 700;
-          color: #ffffff;
-          letter-spacing: -0.02em;
+          color: #F5C518;
+          letter-spacing: 0.05em;
         }
         .price-loading {
-          color: #9ca3af;
-          font-style: italic;
+          font-family: 'JetBrains Mono', monospace;
+          color: #000000;
+          font-weight: 600;
         }
-        .price-error-text {
-          color: #ef4444;
-          font-size: 0.875rem;
+        .price-error {
+          font-family: 'JetBrains Mono', monospace;
+          color: #FF4E4E;
+          font-weight: 700;
         }
         .price-hint {
-          font-size: 0.75rem;
-          color: #6b7280;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.7rem;
+          color: #000000;
           margin-top: 0.5rem;
           text-align: center;
+          font-weight: 600;
+        }
+        .brutal-card {
+          background: #FFFFFF;
+          border: 3px solid #000000;
+          padding: 1.5rem;
+          box-shadow: 6px 6px 0 0 #000000;
+          transition: all 0.1s;
+        }
+        .brutal-card:hover {
+          transform: translate(-2px, -2px);
+          box-shadow: 8px 8px 0 0 #000000;
+        }
+        .card-label {
+          background: #000000;
+          color: #F5C518;
+          padding: 0.5rem 1rem;
+          font-family: 'Space Grotesk', sans-serif;
+          font-size: 0.7rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
+          margin: -1.5rem -1.5rem 1rem -1.5rem;
+          border-bottom: 2px solid #F5C518;
         }
       `}</style>
-    </form>
+    </>
   );
 };

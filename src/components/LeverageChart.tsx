@@ -1,6 +1,8 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useRef } from 'react';
+import { Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, Area, ComposedChart } from 'recharts';
 import type { Position } from '../utils/liquidationCalculator';
 import { calculateLiquidationPrice } from '../utils/liquidationCalculator';
+import { motion } from 'framer-motion';
 
 interface LeverageChartProps {
   position: Position;
@@ -8,109 +10,50 @@ interface LeverageChartProps {
 }
 
 export const LeverageChart: React.FC<LeverageChartProps> = ({ position, onLeverageChange }) => {
-  const [hoveredLeverage, setHoveredLeverage] = useState<number | null>(null);
+  const [, setHoveredLeverage] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const chartRef = useRef<HTMLDivElement>(null);
   const { side, currentPrice } = position;
   const currentLeverage = position.leverage;
 
   // Generate data points for leverage from 1x to 500x
-  // Calculate distance from liquidation for each leverage point
   const chartData = useMemo(() => {
+    if (!currentPrice || currentPrice <= 0) {
+      return [];
+    }
+    
     const data: Array<{ leverage: number; distanceFromLiquidation: number; distanceInPrice: number }> = [];
-    for (let lev = 1; lev <= 500; lev += 5) {
+    for (let lev = 1; lev <= 500; lev += 2) {
       const testPosition: Position = {
         ...position,
         leverage: lev,
       };
       const liqPrice = calculateLiquidationPrice(testPosition);
       
-      // Calculate distance from liquidation
       let distanceInPrice: number;
       let distanceFromLiquidation: number;
       
       if (side === 'long') {
         distanceInPrice = currentPrice - liqPrice;
-        distanceFromLiquidation = ((currentPrice - liqPrice) / currentPrice) * 100;
+        distanceFromLiquidation = currentPrice > 0 ? ((currentPrice - liqPrice) / currentPrice) * 100 : 0;
       } else {
         distanceInPrice = liqPrice - currentPrice;
-        distanceFromLiquidation = ((liqPrice - currentPrice) / currentPrice) * 100;
+        distanceFromLiquidation = currentPrice > 0 ? ((liqPrice - currentPrice) / currentPrice) * 100 : 0;
       }
       
-      data.push({ 
-        leverage: lev, 
-        distanceFromLiquidation,
-        distanceInPrice
-      });
+      // Ensure valid numbers
+      if (!isNaN(distanceFromLiquidation) && !isNaN(distanceInPrice) && isFinite(distanceFromLiquidation) && isFinite(distanceInPrice)) {
+        data.push({ 
+          leverage: lev, 
+          distanceFromLiquidation: Math.max(0, distanceFromLiquidation),
+          distanceInPrice
+        });
+      }
     }
     return data;
   }, [position, currentPrice, side]);
 
-  // Calculate chart dimensions and scales
-  const chartWidth = 800;
-  const chartHeight = 320;
-  const padding = { top: 40, right: 40, bottom: 60, left: 80 };
-  const plotWidth = chartWidth - padding.left - padding.right;
-  const plotHeight = chartHeight - padding.top - padding.bottom;
-
-  const minLeverage = 1;
-  const maxLeverage = 500;
-  const minDistance = Math.min(...chartData.map(d => d.distanceFromLiquidation));
-  const maxDistance = Math.max(...chartData.map(d => d.distanceFromLiquidation));
-  const distanceRange = maxDistance - minDistance;
-  const distancePadding = Math.max(distanceRange * 0.1, 1); // At least 1% padding
-
-  // Scale functions
-  const scaleX = (leverage: number) => {
-    return padding.left + ((leverage - minLeverage) / (maxLeverage - minLeverage)) * plotWidth;
-  };
-
-  const scaleY = (distance: number) => {
-    // Invert Y axis so higher distance (safer) is at the top
-    return padding.top + plotHeight - ((distance - (minDistance - distancePadding)) / (maxDistance - minDistance + distancePadding * 2)) * plotHeight;
-  };
-
-  // Generate path for the line
-  const linePath = useMemo(() => {
-    if (chartData.length === 0) return '';
-    const path = chartData.map((point, index) => {
-      const x = scaleX(point.leverage);
-      const y = scaleY(point.distanceFromLiquidation);
-      return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
-    }).join(' ');
-    return path;
-  }, [chartData, scaleX, scaleY]);
-
-  // Handle mouse move for interaction
-  const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    // Check if mouse is in plot area
-    if (x >= padding.left && x <= padding.left + plotWidth && 
-        y >= padding.top && y <= padding.top + plotHeight) {
-      // Convert mouse X to leverage
-      const leverage = minLeverage + ((x - padding.left) / plotWidth) * (maxLeverage - minLeverage);
-      setHoveredLeverage(Math.round(leverage));
-    } else {
-      setHoveredLeverage(null);
-    }
-  }, [padding, plotWidth, plotHeight, minLeverage, maxLeverage]);
-
-  // Handle click to set leverage
-  const handleClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
-    if (!onLeverageChange) return;
-    
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-
-    if (x >= padding.left && x <= padding.left + plotWidth) {
-      const leverage = minLeverage + ((x - padding.left) / plotWidth) * (maxLeverage - minLeverage);
-      const roundedLeverage = Math.max(1, Math.min(500, Math.round(leverage)));
-      onLeverageChange(roundedLeverage);
-    }
-  }, [onLeverageChange, padding, plotWidth, minLeverage, maxLeverage]);
-
-  // Current position point
+  // Current position data
   const currentLiquidationPrice = calculateLiquidationPrice(position);
   let currentDistanceFromLiquidation: number;
   let currentDistanceInPrice: number;
@@ -121,368 +64,344 @@ export const LeverageChart: React.FC<LeverageChartProps> = ({ position, onLevera
     currentDistanceInPrice = currentLiquidationPrice - currentPrice;
     currentDistanceFromLiquidation = ((currentLiquidationPrice - currentPrice) / currentPrice) * 100;
   }
-  const currentX = scaleX(currentLeverage);
-  const currentY = scaleY(currentDistanceFromLiquidation);
 
-  // Hovered position point
-  let hoveredDistanceFromLiquidation: number | null = null;
-  let hoveredDistanceInPrice: number | null = null;
-  if (hoveredLeverage) {
-    const hoveredLiquidationPrice = calculateLiquidationPrice({ ...position, leverage: hoveredLeverage });
-    if (side === 'long') {
-      hoveredDistanceInPrice = currentPrice - hoveredLiquidationPrice;
-      hoveredDistanceFromLiquidation = ((currentPrice - hoveredLiquidationPrice) / currentPrice) * 100;
-    } else {
-      hoveredDistanceInPrice = hoveredLiquidationPrice - currentPrice;
-      hoveredDistanceFromLiquidation = ((hoveredLiquidationPrice - currentPrice) / currentPrice) * 100;
+  // Calculate max distance for fixed Y-axis - zoomed in to focus on relevant range
+  // Use a smaller max to zoom in on the data
+  const maxDistance = useMemo(() => {
+    if (chartData.length === 0) return 30;
+    const max = Math.max(...chartData.map(d => d.distanceFromLiquidation));
+    // Round up to nearest 2.5, but cap at 30% for zoomed-in view
+    // This focuses on the lower range where most data points are
+    const calculatedMax = Math.ceil(max / 2.5) * 2.5;
+    return Math.min(30, Math.max(10, calculatedMax));
+  }, [chartData]);
+
+  // Create safe zone data with null values outside safe zone
+  const safeZoneChartData = useMemo(() => {
+    return chartData.map(d => ({
+      ...d,
+      safeZoneDistance: d.leverage <= 20 ? d.distanceFromLiquidation : null
+    }));
+  }, [chartData]);
+
+  // Find closest data point to current leverage for marker
+  const currentDataPoint = useMemo(() => {
+    return chartData.find(d => Math.abs(d.leverage - currentLeverage) <= 1) || 
+           chartData.reduce((prev, curr) => 
+             Math.abs(curr.leverage - currentLeverage) < Math.abs(prev.leverage - currentLeverage) ? curr : prev
+           );
+  }, [chartData, currentLeverage]);
+
+  // Handle mouse move for hover
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (isDragging || !chartRef.current) return;
+    
+    const rect = chartRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const chartWidth = rect.width - 160; // Account for padding
+    const leverage = Math.max(1, Math.min(500, Math.round((x / chartWidth) * 500)));
+    setHoveredLeverage(leverage);
+  }, [isDragging]);
+
+  // Handle drag to adjust leverage
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!onLeverageChange || !chartRef.current) return;
+    setIsDragging(true);
+    
+    const rect = chartRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const chartWidth = rect.width - 160;
+    const leverage = Math.max(1, Math.min(500, Math.round((x / chartWidth) * 500)));
+    onLeverageChange(leverage);
+  }, [onLeverageChange]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  // Custom tooltip
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="brutal-tooltip">
+          <div className="tooltip-label">LEVERAGE: {data.leverage}X</div>
+          <div className="tooltip-value">DISTANCE: {data.distanceFromLiquidation.toFixed(2)}%</div>
+          <div className="tooltip-value">MARGIN: ${Math.abs(data.distanceInPrice).toFixed(2)}</div>
+        </div>
+      );
     }
-  }
-  const hoveredX = hoveredLeverage ? scaleX(hoveredLeverage) : null;
-  const hoveredY = hoveredDistanceFromLiquidation !== null ? scaleY(hoveredDistanceFromLiquidation) : null;
+    return null;
+  };
 
-  // Generate Y-axis ticks
-  const yTicks = useMemo(() => {
-    const ticks: number[] = [];
-    const step = (maxDistance - minDistance + distancePadding * 2) / 5;
-    for (let i = 0; i <= 5; i++) {
-      ticks.push(minDistance - distancePadding + step * i);
-    }
-    return ticks;
-  }, [minDistance, maxDistance, distancePadding]);
-
-  // Generate X-axis ticks
-  const xTicks = [1, 50, 100, 200, 300, 400, 500];
-
-  const formatCurrency = (value: number) => {
-    return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  // Custom dot for current position - more visible
+  const CurrentPositionDot = (props: any) => {
+    const { cx, cy } = props;
+    if (cx === undefined || cy === undefined) return null;
+    
+    return (
+      <g>
+        {/* Outer glow circle */}
+        <circle
+          cx={cx}
+          cy={cy}
+          r="12"
+          fill="#F5C518"
+          opacity="0.3"
+        />
+        {/* Main circle */}
+        <circle
+          cx={cx}
+          cy={cy}
+          r="10"
+          fill="#000000"
+          stroke="#F5C518"
+          strokeWidth="4"
+        />
+        {/* Inner highlight */}
+        <circle
+          cx={cx}
+          cy={cy}
+          r="5"
+          fill="#F5C518"
+        />
+        {/* Arrow pointer */}
+        <polygon
+          points={`${cx},${cy - 20} ${cx - 8},${cy - 32} ${cx + 8},${cy - 32}`}
+          fill="#F5C518"
+          stroke="#000000"
+          strokeWidth="3"
+        />
+      </g>
+    );
   };
 
   const formatPercentage = (value: number) => {
     return `${value.toFixed(2)}%`;
   };
 
+  // Don't render if no data or invalid price
+  if (!chartData || chartData.length === 0 || !currentPrice || currentPrice <= 0) {
+    return (
+      <div className="chart-container">
+        <div className="chart-wrapper">
+          <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'JetBrains Mono', color: '#000000' }}>
+            LOADING CHART DATA...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="leverage-chart-container">
-      <h3 className="chart-title">Distance from Liquidation vs Leverage</h3>
-      
-      <svg
-        width={chartWidth}
-        height={chartHeight}
-        className="leverage-chart-svg"
-        onMouseMove={handleMouseMove}
-        onClick={handleClick}
-        onMouseLeave={() => setHoveredLeverage(null)}
-      >
-        {/* Grid lines */}
-        {yTicks.map((tick, i) => (
-          <g key={`grid-y-${i}`}>
-            <line
-              x1={padding.left}
-              y1={scaleY(tick)}
-              x2={padding.left + plotWidth}
-              y2={scaleY(tick)}
-              stroke="rgba(255, 255, 255, 0.05)"
-              strokeWidth="1"
-            />
-          </g>
-        ))}
-        {xTicks.map((tick, i) => (
-          <g key={`grid-x-${i}`}>
-            <line
-              x1={scaleX(tick)}
-              y1={padding.top}
-              x2={scaleX(tick)}
-              y2={padding.top + plotHeight}
-              stroke="rgba(255, 255, 255, 0.05)"
-              strokeWidth="1"
-            />
-          </g>
-        ))}
-
-        {/* Chart line */}
-        <path
-          d={linePath}
-          fill="none"
-          stroke={currentDistanceFromLiquidation < 10 ? '#ef4444' : currentDistanceFromLiquidation < 20 ? '#f59e0b' : '#10b981'}
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-
-        {/* Hovered point */}
-        {hoveredLeverage && hoveredX !== null && hoveredY !== null && hoveredDistanceFromLiquidation !== null && (
-          <>
-            <circle
-              cx={hoveredX}
-              cy={hoveredY}
-              r="6"
-              fill="#ffffff"
-              stroke={hoveredDistanceFromLiquidation < 10 ? '#ef4444' : hoveredDistanceFromLiquidation < 20 ? '#f59e0b' : '#10b981'}
-              strokeWidth="2"
-            />
-            <g className="hover-tooltip">
-              <rect
-                x={hoveredX - 70}
-                y={hoveredY - 60}
-                width="140"
-                height="50"
-                rx="8"
-                fill="rgba(0, 0, 0, 0.8)"
-                stroke="rgba(255, 255, 255, 0.2)"
-              />
-              <text
-                x={hoveredX}
-                y={hoveredY - 45}
-                textAnchor="middle"
-                fill="#ffffff"
-                fontSize="12"
-                fontWeight="600"
-              >
-                {hoveredLeverage}x Leverage
-              </text>
-              <text
-                x={hoveredX}
-                y={hoveredY - 28}
-                textAnchor="middle"
-                fill="#9ca3af"
-                fontSize="11"
-              >
-                {formatPercentage(hoveredDistanceFromLiquidation)} away
-              </text>
-              <text
-                x={hoveredX}
-                y={hoveredY - 12}
-                textAnchor="middle"
-                fill="#9ca3af"
-                fontSize="10"
-              >
-                {formatCurrency(hoveredDistanceInPrice!)}
-              </text>
-            </g>
-          </>
-        )}
-
-        {/* Current position point */}
-        <circle
-          cx={currentX}
-          cy={currentY}
-          r="8"
-          fill="#ffffff"
-          stroke={currentDistanceFromLiquidation < 10 ? '#ef4444' : currentDistanceFromLiquidation < 20 ? '#f59e0b' : '#10b981'}
-          strokeWidth="3"
-          className="current-point"
-        />
-        <g className="current-tooltip">
-          <rect
-            x={currentX - 80}
-            y={currentY - 70}
-            width="160"
-            height="60"
-            rx="8"
-            fill="rgba(99, 102, 241, 0.9)"
-            stroke="rgba(255, 255, 255, 0.3)"
+    <div 
+      className="chart-container"
+      ref={chartRef}
+      onMouseMove={handleMouseMove}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={() => {
+        setHoveredLeverage(null);
+        setIsDragging(false);
+      }}
+    >
+      <div className="chart-wrapper">
+        <ComposedChart
+          width={900}
+          height={700}
+          data={safeZoneChartData}
+          margin={{ top: 40, right: 40, left: 90, bottom: 60 }}
+        >
+          <defs>
+            <linearGradient id="safeZoneGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#00FFC2" stopOpacity={0.4} />
+              <stop offset="100%" stopColor="#00FFC2" stopOpacity={0.1} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid 
+            strokeDasharray="3 3" 
+            stroke="#000000" 
+            strokeWidth="1"
+            vertical={true}
+            horizontal={true}
           />
-          <text
-            x={currentX}
-            y={currentY - 50}
-            textAnchor="middle"
-            fill="#ffffff"
-            fontSize="11"
-            fontWeight="600"
-          >
-            Current Position
-          </text>
-          <text
-            x={currentX}
-            y={currentY - 35}
-            textAnchor="middle"
-            fill="#ffffff"
-            fontSize="13"
-            fontWeight="700"
-          >
-            {currentLeverage}x Leverage
-          </text>
-          <text
-            x={currentX}
-            y={currentY - 20}
-            textAnchor="middle"
-            fill="#a5b4fc"
-            fontSize="11"
-          >
-            {formatPercentage(currentDistanceFromLiquidation)} away
-          </text>
-          <text
-            x={currentX}
-            y={currentY - 7}
-            textAnchor="middle"
-            fill="#a5b4fc"
-            fontSize="10"
-          >
-            {formatCurrency(currentDistanceInPrice)}
-          </text>
-        </g>
-
-        {/* Y-axis */}
-        <line
-          x1={padding.left}
-          y1={padding.top}
-          x2={padding.left}
-          y2={padding.top + plotHeight}
-          stroke="rgba(255, 255, 255, 0.2)"
-          strokeWidth="2"
-        />
-        {yTicks.map((tick, i) => (
-          <g key={`y-tick-${i}`}>
-            <line
-              x1={padding.left - 5}
-              y1={scaleY(tick)}
-              x2={padding.left}
-              y2={scaleY(tick)}
-              stroke="rgba(255, 255, 255, 0.3)"
-              strokeWidth="1"
+          
+          {/* Risk zone reference lines */}
+          <ReferenceLine y={10} stroke="#F5C518" strokeWidth="2" strokeDasharray="5 5" label={{ value: "10% RISK ZONE", position: "right", fill: "#F5C518", fontFamily: 'Space Grotesk', fontSize: 11, fontWeight: 700 }} />
+          <ReferenceLine y={5} stroke="#FF4E4E" strokeWidth="2" strokeDasharray="6 4" label={{ value: "5% CRITICAL", position: "right", fill: "#FF4E4E", fontFamily: 'Space Grotesk', fontSize: 11, fontWeight: 700 }} />
+          <ReferenceLine y={20} stroke="#00FFC2" strokeWidth="2" strokeDasharray="5 5" label={{ value: "20% SAFE", position: "right", fill: "#00FFC2", fontFamily: 'Space Grotesk', fontSize: 11, fontWeight: 700 }} />
+          <ReferenceLine y={7.5} stroke="#000000" strokeWidth="1" strokeDasharray="2 2" opacity={0.2} />
+          <ReferenceLine y={12.5} stroke="#000000" strokeWidth="1" strokeDasharray="2 2" opacity={0.2} />
+          <ReferenceLine y={17.5} stroke="#000000" strokeWidth="1" strokeDasharray="2 2" opacity={0.2} />
+          
+          {/* Key leverage reference lines */}
+          <ReferenceLine x={10} stroke="#000000" strokeWidth="1" strokeDasharray="2 2" opacity={0.3} />
+          <ReferenceLine x={50} stroke="#000000" strokeWidth="1" strokeDasharray="2 2" opacity={0.3} />
+          <ReferenceLine x={100} stroke="#000000" strokeWidth="1" strokeDasharray="2 2" opacity={0.3} />
+          <ReferenceLine x={250} stroke="#000000" strokeWidth="1" strokeDasharray="2 2" opacity={0.3} />
+          <XAxis
+            dataKey="leverage"
+            type="number"
+            stroke="#000000"
+            strokeWidth="3"
+            tick={{ fill: '#000000', fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 700 }}
+            label={{ value: 'LEVERAGE (X)', position: 'insideBottom', offset: -10, fill: '#000000', fontFamily: 'Space Grotesk', fontSize: 13, fontWeight: 700 }}
+            domain={[1, 500]}
+            ticks={Array.from({ length: Math.floor(500 / 5) + 1 }, (_, i) => i * 5).filter(t => t >= 1 && t <= 500 && (t % 25 === 0 || t === 1 || t === 500))}
+            allowDataOverflow={false}
+            tickLine={{ stroke: '#000000', strokeWidth: 2 }}
+          />
+          <YAxis
+            stroke="#000000"
+            strokeWidth="3"
+            tick={{ fill: '#000000', fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: 700 }}
+            label={{ value: 'DISTANCE TO LIQUIDATION (%)', angle: -90, position: 'insideLeft', fill: '#000000', fontFamily: 'Space Grotesk', fontSize: 13, fontWeight: 700 }}
+            domain={[0, maxDistance]}
+            allowDataOverflow={false}
+            tickLine={{ stroke: '#000000', strokeWidth: 2 }}
+            ticks={Array.from({ length: Math.floor(maxDistance / 2.5) + 1 }, (_, i) => i * 2.5)}
+            tickFormatter={(value) => value % 5 === 0 ? `${value}%` : `${value.toFixed(1)}%`}
+          />
+          <Tooltip content={<CustomTooltip />} />
+          
+          {/* Safe zone area (1x-20x) - more visible */}
+          <Area
+            type="monotone"
+            dataKey="safeZoneDistance"
+            fill="url(#safeZoneGradient)"
+            stroke="#00FFC2"
+            strokeWidth="2"
+            isAnimationActive={false}
+            connectNulls={false}
+          />
+          
+          {/* Main line */}
+          <Line
+            type="monotone"
+            dataKey="distanceFromLiquidation"
+            stroke="#FF4E4E"
+            strokeWidth="3"
+            dot={false}
+            activeDot={{ r: 8, fill: '#F5C518', stroke: '#000000', strokeWidth: 3 }}
+            isAnimationActive={false}
+            connectNulls={false}
+          />
+          
+          {/* Current position reference line */}
+          <ReferenceLine
+            x={currentLeverage}
+            stroke="#F5C518"
+            strokeWidth="2"
+            strokeDasharray="8 4"
+            label={{ value: `CURRENT: ${currentLeverage}X`, position: "top", fill: "#F5C518", fontFamily: 'Space Grotesk', fontSize: 11, fontWeight: 700, offset: 10 }}
+          />
+          
+          {/* Current position dot */}
+          {currentDataPoint && (
+            <Line
+              type="monotone"
+              dataKey="distanceFromLiquidation"
+              data={[currentDataPoint]}
+              stroke="none"
+              dot={<CurrentPositionDot />}
+              activeDot={false}
+              isAnimationActive={false}
+              connectNulls={false}
             />
-            <text
-              x={padding.left - 10}
-              y={scaleY(tick) + 4}
-              textAnchor="end"
-              fill="#9ca3af"
-              fontSize="11"
-            >
-              {formatPercentage(tick)}
-            </text>
-          </g>
-        ))}
-        <text
-          x={-chartHeight / 2}
-          y={20}
-          transform={`rotate(-90 ${20} ${chartHeight / 2})`}
-          textAnchor="middle"
-          fill="#ffffff"
-          fontSize="12"
-          fontWeight="600"
-        >
-          Distance from Liquidation (%)
-        </text>
+          )}
+        </ComposedChart>
+      </div>
 
-        {/* X-axis */}
-        <line
-          x1={padding.left}
-          y1={padding.top + plotHeight}
-          x2={padding.left + plotWidth}
-          y2={padding.top + plotHeight}
-          stroke="rgba(255, 255, 255, 0.2)"
-          strokeWidth="2"
-        />
-        {xTicks.map((tick, i) => (
-          <g key={`x-tick-${i}`}>
-            <line
-              x1={scaleX(tick)}
-              y1={padding.top + plotHeight}
-              x2={scaleX(tick)}
-              y2={padding.top + plotHeight + 5}
-              stroke="rgba(255, 255, 255, 0.3)"
-              strokeWidth="1"
-            />
-            <text
-              x={scaleX(tick)}
-              y={padding.top + plotHeight + 25}
-              textAnchor="middle"
-              fill="#9ca3af"
-              fontSize="11"
-            >
-              {tick}x
-            </text>
-          </g>
-        ))}
-        <text
-          x={padding.left + plotWidth / 2}
-          y={chartHeight - 10}
-          textAnchor="middle"
-          fill="#ffffff"
-          fontSize="12"
-          fontWeight="600"
-        >
-          Leverage
-        </text>
-      </svg>
+      {/* Current position tooltip */}
+      <motion.div
+        className="current-position-tooltip"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        style={{
+          position: 'absolute',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          marginTop: '1rem',
+        }}
+      >
+        <div className="tooltip-label">CURRENT POSITION</div>
+        <div className="tooltip-value">LEVERAGE: {currentLeverage}X</div>
+        <div className="tooltip-value">DISTANCE: {formatPercentage(currentDistanceFromLiquidation)}</div>
+        <div className="tooltip-value">MARGIN: ${Math.abs(currentDistanceInPrice).toFixed(2)}</div>
+      </motion.div>
 
-      <div className="chart-legend">
-        <div className="legend-item">
-          <div className="legend-color" style={{ 
-            background: currentDistanceFromLiquidation < 10 ? '#ef4444' : currentDistanceFromLiquidation < 20 ? '#f59e0b' : '#10b981' 
-          }} />
-          <span>Distance from Liquidation</span>
+      {/* Info box */}
+      <div className="chart-info">
+        <div className="info-icon">💡</div>
+        <div className="info-text">
+          <div>Increasing leverage reduces your liquidation distance exponentially.</div>
+          <div>Spread impact at high leverage can increase liquidation risk by 10–30%.</div>
         </div>
-        <div className="legend-item">
-          <div className="legend-color current" />
-          <span>Current Position ({currentLeverage}x - {formatPercentage(currentDistanceFromLiquidation)} away)</span>
-        </div>
-        <p className="chart-hint">Click on the chart to adjust leverage and see how it affects your safety margin</p>
       </div>
 
       <style>{`
-        .leverage-chart-container {
+        .chart-container {
+          position: relative;
           width: 100%;
+          padding: 1rem;
         }
-        .chart-title {
-          margin: 0 0 1rem 0;
-          font-size: 1rem;
-          font-weight: 600;
-          color: #ffffff;
+        .chart-wrapper {
+          background: #FFFFFF;
+          border: 2px solid #000000;
+          padding: 1rem;
+          box-shadow: 4px 4px 0 0 #000000;
         }
-        .leverage-chart-svg {
-          width: 100%;
-          height: auto;
-          cursor: crosshair;
-        }
-        .current-point {
-          filter: drop-shadow(0 4px 8px rgba(99, 102, 241, 0.4));
-          animation: pulse 2s ease-in-out infinite;
-        }
-        @keyframes pulse {
-          0%, 100% {
-            opacity: 1;
-          }
-          50% {
-            opacity: 0.7;
-          }
-        }
-        .hover-tooltip text,
-        .current-tooltip text {
-          pointer-events: none;
-        }
-        .chart-legend {
-          display: flex;
-          flex-direction: column;
-          gap: 0.75rem;
-          margin-top: 1.5rem;
-          padding-top: 1.5rem;
-          border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .legend-item {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          font-size: 0.875rem;
-          color: #d1d5db;
-        }
-        .legend-color {
-          width: 16px;
-          height: 16px;
-          border-radius: 4px;
-        }
-        .legend-color.current {
-          background: #6366f1;
-          border: 2px solid #ffffff;
-        }
-        .chart-hint {
-          margin: 0.5rem 0 0 0;
+        .brutal-tooltip {
+          background: #F5C518;
+          border: 2px solid #000000;
+          padding: 0.75rem 1rem;
+          font-family: 'JetBrains Mono', monospace;
           font-size: 0.75rem;
-          color: #6b7280;
-          font-style: italic;
+          box-shadow: 4px 4px 0 0 #000000;
+        }
+        .tooltip-label {
+          font-weight: 700;
+          color: #000000;
+          margin-bottom: 0.25rem;
+          text-transform: uppercase;
+        }
+        .tooltip-value {
+          font-weight: 600;
+          color: #000000;
+          margin-bottom: 0.125rem;
+        }
+        .current-position-tooltip {
+          background: #F5C518;
+          border: 2px solid #000000;
+          padding: 0.75rem 1rem;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.75rem;
+          box-shadow: 4px 4px 0 0 #000000;
+          text-align: center;
+        }
+        .chart-info {
+          margin-top: 1.5rem;
+          padding: 1rem;
+          background: #FFFFFF;
+          border: 2px solid #000000;
+          box-shadow: 4px 4px 0 0 #000000;
+          display: flex;
+          gap: 1rem;
+          align-items: flex-start;
+        }
+        .info-icon {
+          font-size: 1.5rem;
+        }
+        .info-text {
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.75rem;
+          color: #000000;
+          line-height: 1.6;
+        }
+        .info-text div {
+          margin-bottom: 0.5rem;
         }
       `}</style>
     </div>
   );
 };
-

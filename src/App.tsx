@@ -10,6 +10,7 @@ function App() {
   const [position, setPosition] = useState<Position | null>(null);
   const [result, setResult] = useState<LiquidationResult | null>(null);
   const [pairInfoData, setPairInfoData] = useState<PairInfoResponse | null>(null);
+  const [lastUpdateTime, setLastUpdateTime] = useState<Date>(new Date());
 
   // Fetch pair info on mount
   useEffect(() => {
@@ -17,6 +18,7 @@ function App() {
       try {
         const data = await fetchPairInfo();
         setPairInfoData(data);
+        setLastUpdateTime(new Date());
       } catch (error) {
         console.error('Failed to load pair info:', error);
       }
@@ -28,6 +30,13 @@ function App() {
     const interval = setInterval(loadPairInfo, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Update last update time when position changes
+  useEffect(() => {
+    if (position) {
+      setLastUpdateTime(new Date());
+    }
+  }, [position]);
 
   const handlePositionSubmit = (newPosition: Position) => {
     // Attach pair info to position if available
@@ -44,19 +53,49 @@ function App() {
     setPosition(positionWithPairInfo);
     const liquidationResult = calculateLiquidationWithSpread(positionWithPairInfo);
     setResult(liquidationResult);
+    setLastUpdateTime(new Date());
+  };
+
+  const getTimeSinceUpdate = () => {
+    const seconds = Math.floor((new Date().getTime() - lastUpdateTime.getTime()) / 1000);
+    return seconds;
   };
 
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Avantis Liquidation Visualizer</h1>
-        <p className="subtitle">
-          Visualize your distance from liquidation with up to 500x leverage
-        </p>
+        <div className="header-content">
+          <h1>AVANTIS RISK DASHBOARD</h1>
+          <div className="header-controls">
+            <div className="market-selector-wrapper">
+              <label className="header-label">MARKET</label>
+              <select 
+                className="market-selector"
+                value={position?.market || 'BTC/USD'}
+                onChange={(e) => {
+                  if (position) {
+                    handlePositionSubmit({ ...position, market: e.target.value });
+                  }
+                }}
+              >
+                <option value="BTC/USD">BTC/USD</option>
+                <option value="ETH/USD">ETH/USD</option>
+                <option value="SOL/USD">SOL/USD</option>
+              </select>
+            </div>
+            <div className="live-toggle-wrapper">
+              <label className="header-label">LIVE MODE</label>
+              <div className="live-toggle">
+                <input type="checkbox" id="liveToggle" defaultChecked />
+                <label htmlFor="liveToggle" className="toggle-switch"></label>
+              </div>
+            </div>
+          </div>
+        </div>
       </header>
 
       <main className="app-main">
-        <div className="bento-container">
+        <div className="dashboard-container">
           <PositionForm 
             onSubmit={handlePositionSubmit} 
             initialPosition={position || undefined}
@@ -75,59 +114,156 @@ function App() {
         </div>
       </main>
 
+      <footer className="app-footer">
+        <div className="footer-strip">
+          [ AVANTIS sAMM ENGINE | 500x MAX LEVERAGE | DYNAMIC SPREAD ACTIVE | LAST UPDATE: {getTimeSinceUpdate()}s AGO ]
+        </div>
+      </footer>
+
       <style>{`
         * {
           box-sizing: border-box;
+          margin: 0;
+          padding: 0;
         }
         body {
           margin: 0;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-            'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-            sans-serif;
+          font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
+          background: #F8F8F8;
         }
         .app {
           min-height: 100vh;
-          background: #0a0e27;
-          background-image: 
-            radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
-            radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.1) 0%, transparent 50%);
+          background: #F8F8F8;
           display: flex;
           flex-direction: column;
         }
         .app-header {
-          padding: 1.5rem 2rem 1rem;
-          text-align: center;
-          color: #ffffff;
+          background: #FFFFFF;
+          border-bottom: 3px solid #000000;
+          padding: 1.5rem 2rem;
+          box-shadow: 0 4px 0 0 #000000;
+        }
+        .header-content {
+          max-width: 1400px;
+          margin: 0 auto;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 2rem;
         }
         .app-header h1 {
-          margin: 0 0 0.25rem 0;
-          font-size: 2rem;
+          font-family: 'Space Grotesk', sans-serif;
+          font-size: 1.75rem;
           font-weight: 700;
-          background: linear-gradient(135deg, #ffffff 0%, #a5b4fc 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-          letter-spacing: -0.02em;
-        }
-        .subtitle {
+          color: #000000;
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
           margin: 0;
+        }
+        .header-controls {
+          display: flex;
+          gap: 2rem;
+          align-items: flex-end;
+        }
+        .market-selector-wrapper,
+        .live-toggle-wrapper {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+        .header-label {
+          font-family: 'Space Grotesk', sans-serif;
+          font-size: 0.7rem;
+          font-weight: 700;
+          color: #000000;
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
+        }
+        .market-selector {
+          padding: 0.75rem 1rem;
+          border: 2px solid #000000;
+          background: #FFFFFF;
+          font-family: 'JetBrains Mono', monospace;
           font-size: 0.875rem;
-          color: #9ca3af;
-          font-weight: 400;
+          font-weight: 600;
+          color: #000000;
+          cursor: pointer;
+          box-shadow: 4px 4px 0 0 #000000;
+          transition: all 0.1s;
+        }
+        .market-selector:hover {
+          transform: translate(-2px, -2px);
+          box-shadow: 6px 6px 0 0 #000000;
+        }
+        .market-selector:active {
+          transform: translate(2px, 2px);
+          box-shadow: 2px 2px 0 0 #000000;
+        }
+        .live-toggle {
+          display: flex;
+          align-items: center;
+        }
+        .live-toggle input[type="checkbox"] {
+          display: none;
+        }
+        .toggle-switch {
+          width: 60px;
+          height: 32px;
+          background: #FFFFFF;
+          border: 2px solid #000000;
+          position: relative;
+          cursor: pointer;
+          box-shadow: 4px 4px 0 0 #000000;
+          transition: all 0.1s;
+        }
+        .toggle-switch::before {
+          content: '';
+          position: absolute;
+          width: 24px;
+          height: 24px;
+          background: #000000;
+          top: 2px;
+          left: 2px;
+          transition: all 0.1s;
+        }
+        .live-toggle input[type="checkbox"]:checked + .toggle-switch::before {
+          left: 32px;
+          background: #F5C518;
+        }
+        .live-toggle input[type="checkbox"]:checked + .toggle-switch {
+          background: #F5C518;
+        }
+        .toggle-switch:active {
+          transform: translate(2px, 2px);
+          box-shadow: 2px 2px 0 0 #000000;
         }
         .app-main {
           flex: 1;
-          padding: 1rem 2rem 2rem;
+          padding: 2rem;
         }
-        .bento-container {
+        .dashboard-container {
           max-width: 1400px;
           margin: 0 auto;
           display: grid;
           grid-template-columns: repeat(12, 1fr);
-          gap: 1rem;
-          grid-auto-rows: minmax(80px, auto);
+          gap: 1.5rem;
+          grid-auto-rows: minmax(100px, auto);
+        }
+        .app-footer {
+          background: #000000;
+          border-top: 3px solid #F5C518;
+          padding: 0.75rem 2rem;
+        }
+        .footer-strip {
+          max-width: 1400px;
+          margin: 0 auto;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.75rem;
+          color: #F5C518;
+          text-align: center;
+          letter-spacing: 0.05em;
         }
       `}</style>
     </div>
@@ -135,5 +271,3 @@ function App() {
 }
 
 export default App;
-
-
